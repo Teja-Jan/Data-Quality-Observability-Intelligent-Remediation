@@ -32,6 +32,10 @@ from db import database as db
 from reports.report_generator import generate_pdf_report, generate_excel_issues_report
 from email_service import send_dq_alert, send_high_risk_approval_email
 from connectors.data_connector import DatabaseConnector, FlatFileConnector, APIConnector
+from utils import env_manager
+
+# Initialize environment
+env_manager.init_env()
 
 APP_TITLE    = "Orchestrated Data Quality Observability & Intelligent Remediation"
 APP_SUBTITLE = ("Integrates multi-dimensional observability with autonomous remediation "
@@ -465,6 +469,107 @@ def get_ac_recommendation(row):
         
     return "⚖️ REVIEW (Standard analyst access)"
 
+def load_env_connection():
+    """Attempt to establish a connection using .env variables."""
+    conn_type = env_manager.get_env_var("DEFAULT_CONN_TYPE")
+    if not conn_type or not conn_type.strip():
+        return None, None
+    
+    conn_type = conn_type.lower().strip()
+    try:
+        if conn_type == "file":
+            path = env_manager.get_env_var("FILE_PATH")
+            if not path: return None, None
+            fmt = env_manager.get_env_var("FILE_FORMAT", "CSV").lower()
+            sheet = env_manager.get_env_var("FILE_SHEET", 0)
+            conn = FlatFileConnector()
+            return conn.load(path, file_type=fmt, sheet_name=sheet)
+            
+        elif conn_type == "api":
+            url = env_manager.get_env_var("API_URL")
+            if not url: return None, None
+            conn = APIConnector()
+            return conn.fetch(
+                url=url,
+                auth_token=env_manager.get_env_var("API_TOKEN"),
+                header_key=env_manager.get_env_var("API_HKEY", "Authorization"),
+                json_path=env_manager.get_env_var("API_JPATH"),
+                method=env_manager.get_env_var("API_METHOD", "GET")
+            )
+            
+        elif conn_type == "snowflake":
+            host = env_manager.get_env_var("SF_ACCOUNT")
+            if not host: return None, None
+            conn = DatabaseConnector()
+            return conn.connect(
+                host=host,
+                dbname=env_manager.get_env_var("SF_DB"),
+                username=env_manager.get_env_var("SF_USER"),
+                password=env_manager.get_env_var("SF_PASS"),
+                db_type="snowflake",
+                table=env_manager.get_env_var("SF_TABLE"),
+                snowflake_warehouse=env_manager.get_env_var("SF_WH"),
+                snowflake_schema=env_manager.get_env_var("SF_SCHEMA", "PUBLIC")
+            )
+            
+        elif conn_type == "rdbms":
+            host = env_manager.get_env_var("DB_HOST")
+            if not host: return None, None
+            conn = DatabaseConnector()
+            return conn.connect(
+                host=host,
+                port=int(env_manager.get_env_var("DB_PORT", 5432)),
+                dbname=env_manager.get_env_var("DB_NAME"),
+                username=env_manager.get_env_var("DB_USER"),
+                password=env_manager.get_env_var("DB_PASS"),
+                db_type=env_manager.get_env_var("DB_ENGINE", "postgresql"),
+                table=env_manager.get_env_var("DB_TABLE")
+            )
+    except Exception as e:
+        print(f"Env Connection Error: {e}")
+    return None, None
+
+def update_env_connection(conn_type, params):
+    """Save connection details back to .env for persistence."""
+    updates = {"DEFAULT_CONN_TYPE": conn_type}
+    
+    if conn_type == "file":
+        updates.update({
+            "FILE_PATH": params.get("path", ""),
+            "FILE_FORMAT": params.get("file_type", "CSV"),
+            "FILE_SHEET": params.get("sheet_name", 0)
+        })
+    elif conn_type == "api":
+        updates.update({
+            "API_URL": params.get("url", ""),
+            "API_TOKEN": params.get("auth_token", ""),
+            "API_HKEY": params.get("header_key", "Authorization"),
+            "API_JPATH": params.get("json_path", ""),
+            "API_METHOD": params.get("method", "GET")
+        })
+    elif conn_type == "snowflake":
+        updates.update({
+            "SF_ACCOUNT": params.get("host", ""),
+            "SF_WH": params.get("snowflake_warehouse", ""),
+            "SF_DB": params.get("dbname", ""),
+            "SF_SCHEMA": params.get("snowflake_schema", "PUBLIC"),
+            "SF_TABLE": params.get("table", ""),
+            "SF_USER": params.get("username", ""),
+            "SF_PASS": params.get("password", "")
+        })
+    elif conn_type == "rdbms":
+        updates.update({
+            "DB_HOST": params.get("host", ""),
+            "DB_PORT": params.get("port", 5432),
+            "DB_NAME": params.get("dbname", ""),
+            "DB_USER": params.get("username", ""),
+            "DB_PASS": params.get("password", ""),
+            "DB_ENGINE": params.get("db_type", "postgresql"),
+            "DB_TABLE": params.get("table", "")
+        })
+    
+    env_manager.update_env_vars(updates)
+
 # ─── SESSION STATE ─────────────────────────────────────────────────────────────
 def init_state():
     defaults = {
@@ -492,6 +597,15 @@ def init_state():
              "I am your AI-Agent DQ Assistant. Tell me which data source you want to connect to "
              "(e.g. 'Connect to Healthcare'), or provide connection details on the right."}
         ]
+    
+    # Auto-connect from .env on first run
+    if not st.session_state.authenticated and env_manager.get_env_var("DEFAULT_CONN_TYPE"):
+        df, meta = load_env_connection()
+        if df is not None:
+            st.session_state.authenticated = True
+            st.session_state.pending_df = df
+            st.session_state.pending_source_meta = meta
+            st.session_state.is_env_connection = True
 
 init_state()
 
@@ -700,6 +814,20 @@ if not st.session_state.active_domain:
                 st.session_state.pending_df          = df_result
                 st.session_state.pending_source_meta = meta_result
                 st.session_state.conn_attempt_error  = None
+                st.session_state.is_env_connection   = False
+                
+                # Save to .env for persistence
+                ct = "file" if c_type == "Flat File (Local / Cloud URL)" else \
+                     "api" if c_type == "REST API" else \
+                     "snowflake" if c_type == "Snowflake" else "rdbms"
+                
+                params = {}
+                if ct == "file": params = {"path": c_path, "file_type": c_ftype, "sheet_name": c_sheet}
+                elif ct == "api": params = {"url": c_url, "auth_token": c_token, "header_key": c_hkey, "json_path": c_jpath, "method": c_method}
+                elif ct == "snowflake": params = {"host": c_sf_acct, "snowflake_warehouse": c_sf_wh, "dbname": c_sf_db, "snowflake_schema": c_sf_schema, "table": c_sf_table, "username": c_sf_user, "password": c_sf_pass}
+                elif ct == "rdbms": params = {"host": c_host, "port": c_port, "dbname": c_db, "username": c_user, "password": c_pass, "db_type": c_dbtype, "table": c_table}
+                
+                update_env_connection(ct, params)
 
             st.session_state.authenticated = True
             st.rerun()
