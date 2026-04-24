@@ -1,4 +1,5 @@
 import json
+import litellm
 from dataclasses import dataclass
 
 @dataclass
@@ -11,9 +12,14 @@ class AIDQAgent:
     Autonomous AI Assistant for the DQ Framework.
     Manages the full lifecycle of detection, reasoning, and deterministic execution of fixes.
     """
-    def __init__(self, endpoint="http://localhost:11434/v1"):
+    def __init__(self, endpoint="http://localhost:11434/v1", model="ollama/llama3"):
         self.endpoint = endpoint
+        self.model = model
         self.history = []
+        
+        # Configure LiteLLM for multi-model interoperability
+        litellm.api_base = endpoint
+        litellm.drop_params = True # Ensure compatibility with local providers
 
     def get_initial_greeting(self, domain, total_issues):
         msg = f"Hello! I am your Autonomous Data Quality Agent. I've successfully connected to your {domain.title()} ecosystem and discovered {total_issues} operational issues. I'm ready to manage the complete lifecycle of detection, analysis, and resolution for you. How can I help?"
