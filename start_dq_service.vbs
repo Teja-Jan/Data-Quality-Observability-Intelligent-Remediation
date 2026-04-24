@@ -1,5 +1,5 @@
 ' Starts the DQ Agent as a silent background process (no console window)
-' Run this file to launch the app — it stays running even after closing Antigravity
+' Run this file to launch the app — it stays running even after closing the terminal.
 
 Dim WshShell
 Set WshShell = CreateObject("WScript.Shell")
