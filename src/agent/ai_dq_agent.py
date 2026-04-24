@@ -88,6 +88,39 @@ class AIDQAgent:
                 else:
                     response = "Currently, there are no critical dimensions (score < 70). The dataset is in relatively good health!"
                 
+        elif any(w in user_lower for w in ["connect", "load", "open", "source"]):
+            # Intelligent connection parsing
+            if "snowflake" in user_lower:
+                response = "I've detected a request to connect to Snowflake. Attempting to establish secure session..."
+                action = "CONNECT_SOURCE"
+                action_payload = {
+                    "type": "snowflake",
+                    "host": self._extract_var(user_message, ["account", "host", "at"], "snowflake.enterprise.com"),
+                    "dbname": self._extract_var(user_message, ["db", "database"], "ENTERPRISE_DW"),
+                    "snowflake_warehouse": self._extract_var(user_message, ["warehouse", "wh"], "COMPUTE_WH"),
+                    "snowflake_schema": self._extract_var(user_message, ["schema"], "PUBLIC"),
+                    "username": self._extract_var(user_message, ["user", "login"], "SERVICE_ACCOUNT_DQ")
+                }
+            elif any(w in user_lower for w in ["csv", "file", "path", "load"]):
+                response = "Processing request to load a flat file dataset..."
+                action = "CONNECT_SOURCE"
+                action_payload = {
+                    "type": "file",
+                    "path": self._extract_var(user_message, ["path", "file", "at"], "data/raw/finance_dataset.csv"),
+                    "file_type": "CSV" if "csv" in user_lower else "Parquet" if "parquet" in user_lower else "Auto-detect"
+                }
+            elif any(w in user_lower for w in ["db", "database", "postgres", "mysql", "sql"]):
+                response = "Initiating RDBMS connection handshake..."
+                action = "CONNECT_SOURCE"
+                action_payload = {
+                    "type": "rdbms",
+                    "host": self._extract_var(user_message, ["host", "server", "at"], "localhost"),
+                    "dbname": self._extract_var(user_message, ["db", "database"], "enterprise_db"),
+                    "db_type": "postgresql" if "postgres" in user_lower else "mysql" if "mysql" in user_lower else "postgresql"
+                }
+            else:
+                response = "I can help you connect to Snowflake, a Database, or load a CSV/Parquet file. Which source would you like to configure?"
+
         elif "summarize" in user_lower:
             issue_count = sum([res.issues_found for dim, res in results_context.items() if res])
             response = f"There are {issue_count} total issues spread out across {len([res for res in results_context.values() if res and res.issues_found > 0])} dimensions. You can use the checkboxes in Diagnostic Inspection to remediate problems systematically."
@@ -102,3 +135,12 @@ class AIDQAgent:
             "action": action,
             "action_payload": action_payload
         }
+
+    def _extract_var(self, text, keywords, default):
+        """Simple extraction logic for connection parameters."""
+        words = text.lower().replace(":", " ").replace("=", " ").split()
+        for i, word in enumerate(words):
+            if any(k == word for k in keywords):
+                if i + 1 < len(words):
+                    return words[i+1]
+        return default

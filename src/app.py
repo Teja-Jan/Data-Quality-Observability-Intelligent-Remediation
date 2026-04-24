@@ -655,31 +655,73 @@ if not st.session_state.active_domain:
         if submitted and prompt.strip():
             p = prompt.strip()
             st.session_state.home_messages.append({"role": "user", "content": p})
-            p_lower = p.lower()
-
-            DOMAIN_KEYWORDS = {
-                "healthcare": "healthcare", "health": "healthcare", "patient": "healthcare",
-                "finance":    "finance",    "financial": "finance", "banking": "finance",
-                "insurance":  "insurance",  "claim": "insurance",
-                "supply":     "supply_chain", "logistics": "supply_chain",
-                "automotive": "automotive", "vehicle": "automotive", "car": "automotive",
-            }
-            matched = next((v for k, v in DOMAIN_KEYWORDS.items() if k in p_lower), None)
-
-            if matched or any(k in p_lower for k in ["connect","load","host","user","pass","token","http","admin"]):
-                st.session_state.authenticated = True
-                dn = matched.replace("_"," ").title() if matched else "Enterprise System"
-                st.session_state.home_messages.append({"role": "assistant", "content":
-                    f"Authentication Successful. Connection validated and linked to **{dn}**. "
-                    f"Select your domain below to begin analysis."})
-                if matched:
-                    st.session_state._pending_domain = matched
-                st.rerun()
+            
+            # Intelligent Parsing via AI Agent
+            ai_res = st.session_state.ai_agent.chat(p, {})
+            
+            if ai_res["action"] == "CONNECT_SOURCE":
+                payload = ai_res["action_payload"].copy()
+                ctype = payload.pop("type")
+                
+                # Attempt Connection
+                df_res, meta_res = None, None
+                try:
+                    if ctype == "file":
+                        conn = FlatFileConnector()
+                        df_res, meta_res = conn.load(payload["path"], file_type=payload["file_type"])
+                    elif ctype == "snowflake":
+                        conn = DatabaseConnector()
+                        df_res, meta_res = conn.connect(db_type="snowflake", **payload)
+                    elif ctype == "rdbms":
+                        conn = DatabaseConnector()
+                        df_res, meta_res = conn.connect(**payload)
+                    
+                    if df_res is not None:
+                        st.session_state.authenticated = True
+                        st.session_state.pending_df = df_res
+                        st.session_state.pending_source_meta = meta_res
+                        st.session_state.is_env_connection = False
+                        
+                        # Persist to .env for persistence
+                        update_env_connection(ctype, payload)
+                        
+                        st.session_state.home_messages.append({
+                            "role": "assistant", 
+                            "content": f"✅ {ai_res['response']} Connection established and saved to .env. Select a domain below."
+                        })
+                    else:
+                        st.session_state.home_messages.append({
+                            "role": "assistant", 
+                            "content": "⚠️ I parsed the connection details but the handshake failed. Please verify credentials."
+                        })
+                except Exception as e:
+                    st.session_state.home_messages.append({
+                        "role": "assistant", 
+                        "content": f"❌ Connection error: {str(e)}"
+                    })
             else:
-                st.session_state.home_messages.append({"role": "assistant", "content":
-                    "I can help you connect to Healthcare, Finance, Insurance, Supply Chain, or Automotive systems. "
-                    "You can also say 'connect to a database', 'load a CSV file', or 'connect to an API'."})
-                st.rerun()
+                # Handle domain keywords fallback for simple demo prompts
+                p_lower = p.lower()
+                DOMAIN_KEYWORDS = {
+                    "healthcare": "healthcare", "health": "healthcare", "patient": "healthcare",
+                    "finance":    "finance",    "financial": "finance", "banking": "finance",
+                    "insurance":  "insurance",  "claim": "insurance",
+                    "supply":     "supply_chain", "logistics": "supply_chain",
+                    "automotive": "automotive", "vehicle": "automotive", "car": "automotive",
+                }
+                matched = next((v for k, v in DOMAIN_KEYWORDS.items() if k in p_lower), None)
+                
+                if matched:
+                    st.session_state.authenticated = True
+                    st.session_state._pending_domain = matched
+                    st.session_state.home_messages.append({
+                        "role": "assistant", 
+                        "content": f"Authentication Successful. Connection linked to **{matched.replace('_',' ').title()}**."
+                    })
+                else:
+                    st.session_state.home_messages.append({"role": "assistant", "content": ai_res["response"]})
+            
+            st.rerun()
 
     with sep_col:
         st.markdown("<div class='or-separator'>OR</div>", unsafe_allow_html=True)
@@ -1461,6 +1503,37 @@ with left_col:
                                     break
                         if not found:
                              st.session_state.ai_messages.append({"role": "assistant", "content": f"I couldn't find a {t_type.lower()} matching '{target.title()}'. Check the registry for exact names."})
+                
+                elif action == "CONNECT_SOURCE":
+                    payload = action_payload.copy()
+                    ctype = payload.pop("type")
+                    df_res, meta_res = None, None
+                    try:
+                        if ctype == "file":
+                            conn = FlatFileConnector()
+                            df_res, meta_res = conn.load(payload["path"], file_type=payload["file_type"])
+                        elif ctype == "snowflake":
+                            conn = DatabaseConnector()
+                            df_res, meta_res = conn.connect(db_type="snowflake", **payload)
+                        elif ctype == "rdbms":
+                            conn = DatabaseConnector()
+                            df_res, meta_res = conn.connect(**payload)
+                        
+                        if df_res is not None:
+                            st.session_state.pending_df = df_res
+                            st.session_state.pending_source_meta = meta_res
+                            st.session_state.authenticated = True
+                            st.session_state.is_env_connection = False
+                            
+                            # Persist to .env
+                            update_env_connection(ctype, payload)
+                            
+                            st.session_state.active_domain = None # Force re-selection/re-analysis
+                            st.session_state.ai_messages.append({"role": "assistant", "content": f"✅ Connection established to {ctype}. System is reloading metadata..."})
+                        else:
+                            st.session_state.ai_messages.append({"role": "assistant", "content": "⚠️ Handshake failed for the new connection."})
+                    except Exception as e:
+                        st.session_state.ai_messages.append({"role": "assistant", "content": f"❌ Connection error: {str(e)}"})
             
             st.rerun()
 
