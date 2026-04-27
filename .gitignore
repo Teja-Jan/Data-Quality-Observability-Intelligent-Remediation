@@ -1,5 +1,5 @@
 venv/
-data/
+data/cleaned/
 output/
 reports/
 __pycache__/
