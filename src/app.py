@@ -33,7 +33,7 @@ import streamlit as st
 from agent.dq_agent import DQAgent, DQ_LEVEL_MAP
 from agent.ai_dq_agent import AIDQAgent
 from db import database as db
-from reports.report_generator import generate_pdf_report, generate_excel_issues_report
+from dq_reports.report_generator import generate_pdf_report, generate_excel_issues_report
 from email_service import send_dq_alert, send_high_risk_approval_email
 from connectors.data_connector import DatabaseConnector, FlatFileConnector, APIConnector
 from utils import env_manager
