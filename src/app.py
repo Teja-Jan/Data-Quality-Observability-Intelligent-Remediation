@@ -1,5 +1,5 @@
 """
-AI-Agent Orchestrated Data Quality Observability & Intelligent Remediation
+Data Quality Observability & Intelligent Remediation
 Three-phase flow:
   Phase 1 — Connection  (AI Assistant  OR  Manual: DB / File / API)
   Phase 2 — Domain selection (selectbox, post-auth)
@@ -37,7 +37,7 @@ from utils import env_manager
 # Initialize environment
 env_manager.init_env()
 
-APP_TITLE    = "Orchestrated Data Quality Observability & Intelligent Remediation"
+APP_TITLE    = "Data Quality Observability & Intelligent Remediation"
 APP_SUBTITLE = ("Integrates multi-dimensional observability with autonomous remediation "
                 "to ensure enterprise-grade data integrity across all environments.")
 HIGH_RISK_EMAIL = "teja.jan220@gmail.com"
@@ -2371,11 +2371,11 @@ with right_col:
                         user_email_key = sel_user.split("(")[1].rstrip(")") if user_chosen and "(" in sel_user else None
 
                         if action_choice == "Revoke Access":
-                            st.info(f"⏳ Revoke requires approval. Approval window set to 1 hour. Request sent for {principal_label}.")
+                            st.info(f"⏳ Revoke requires approval. Approval window set to 1 minute. Request sent for {principal_label}.")
                             # Send real SendGrid Email explicitly requested by user
                             send_alert_email(
                                 "Access Revocation Request", 
-                                f"Request to revoke access to {fields_str} for {principal_label}. Please approve within 1 hour."
+                                f"Request to revoke access to {fields_str} for {principal_label}. Please approve within 1 minute."
                             )
                             # Update statuses
                             if user_chosen:
@@ -2386,7 +2386,7 @@ with right_col:
                                 for g in ac["groups"]:
                                     if g["name"] == sel_group:
                                         g["status"] = "Pending Revoke"
-                            ac["audit_log"].insert(0, {"timestamp": ts, "action": "Revoke Requested (1h timeout)", "principal": principal_label, "type": principal_type, "target": fields_str, "by": "Admin"})
+                            ac["audit_log"].insert(0, {"timestamp": ts, "action": "Revoke Requested (1 min timeout)", "principal": principal_label, "type": principal_type, "target": fields_str, "by": "Admin"})
                         
                         elif action_choice in ["Disable Access (Temporary)", "Rollback Access"]:
                             # Mock logics
@@ -2496,6 +2496,7 @@ with right_col:
                     else:
                         st.info(f"No anomalous PII fields mapped directly to `{src}`.")
                             
+            st.info("⏳ PII remediation requires governance approval. Approval window set to 1 minute.")
             if st.button("Apply Fixes / Notify Governance Teams", use_container_width=True, key=f"pii_secure_{active_domain}", type="primary"):
                 try:
                     combined_edited_pii = pd.concat(all_edited_dfs, ignore_index=True) if all_edited_dfs else pd.DataFrame()
@@ -2539,7 +2540,7 @@ with right_col:
     # ──────────────────────────────────────────────────────────────────────
     with tabs[4]:
         # Removed empty opener
-        st.markdown("### 📊 Orchestrated Reporting & Distribution")
+        st.markdown("### 📊 Reporting & Distribution")
         st.caption("Generate high-fidelity reports for stakeholders. Supports specialized DQ metrics and Dashboard views.")
         
         # Identify which dimensions triggered issues for targeted reporting

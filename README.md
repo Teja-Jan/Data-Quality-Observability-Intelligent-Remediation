@@ -3,7 +3,7 @@
 [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/Teja-Jan/Data-Quality-Observability-Intelligent-Remediation/blob/Data-Quality-Observability-and-Intelligent-Remediation/Launch_in_Colab.ipynb)
 
 ## Overview
-An AI-Agent orchestrated platform for modern data quality. By combining deterministic **23-dimension profiling** with an **Autonomous Reasoning Layer (Meta Llama 3)**, the system identifies "silent data decay" and programmatically repairs anomalies.
+An AI-driven platform for modern data quality. By combining deterministic **23-dimension profiling** with an **Autonomous Reasoning Layer (Meta Llama 3)**, the system identifies "silent data decay" and programmatically repairs anomalies.
 
 ## Features
 - **Plug & Play Connectivity**: Snowflake, RDBMS, API, and Flat Files.

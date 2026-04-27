@@ -379,7 +379,7 @@ def build_approval_html_email(domain: str, analysis_output: dict, high_risk_coun
       <div style="background:#fef2f2;border:1px solid #fecaca;border-radius:8px;padding:16px 20px;margin-bottom:20px;">
         <b style="color:#991b1b;">Action Required:</b>
         <p style="color:#7f1d1d;margin:8px 0 0;font-size:13px;">
-          The AI-Agent Orchestrated DQ system has flagged <b>{high_risk_count} high-risk data quality issues</b>
+          The Data Quality system has flagged <b>{high_risk_count} high-risk data quality issues</b>
           in the <b>{domain.replace('_',' ').title()}</b> dataset (DQ Score: {overall_score:.1f}/100).
           These issues cannot be auto-resolved and require your explicit review and approval.
           The complete Excel report is attached.
@@ -401,7 +401,7 @@ def build_approval_html_email(domain: str, analysis_output: dict, high_risk_coun
   <tr>
     <td style="background:#f8fafc;padding:14px 32px;text-align:center;border-top:1px solid #e2e8f0;">
       <p style="margin:0;font-size:11px;color:#94a3b8;">
-        AI-Agent Orchestrated Data Quality Observability & Intelligent Remediation<br>
+        Data Quality Observability & Intelligent Remediation<br>
         This is an automated high-risk approval request. Please review the Excel attachment and respond to your DQ team.
       </p>
     </td>
