@@ -13,18 +13,22 @@ import sys
 import io
 import os
 import random
+from pathlib import Path
+
+# ─── PATH SETUP ───────────────────────────────────────────────────────────────
+# Ensure the 'src' directory is at the front of sys.path
+SRC_DIR = Path(__file__).parent.absolute()
+if str(SRC_DIR) not in sys.path:
+    sys.path.insert(0, str(SRC_DIR))
+
+ROOT_DIR = SRC_DIR.parent
+
 import numpy as np
 import pandas as pd
 import plotly.graph_objects as go
-from pathlib import Path
 from datetime import datetime, timedelta
 
 import streamlit as st
-
-# ─── PATH SETUP ───────────────────────────────────────────────────────────────
-SRC_DIR  = Path(__file__).parent
-ROOT_DIR = SRC_DIR.parent
-sys.path.insert(0, str(SRC_DIR))
 
 from agent.dq_agent import DQAgent, DQ_LEVEL_MAP
 from agent.ai_dq_agent import AIDQAgent
