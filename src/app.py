@@ -598,14 +598,28 @@ def init_state():
              "(e.g. 'Connect to Healthcare'), or provide connection details on the right."}
         ]
     
-    # Auto-connect from .env on first run
-    if not st.session_state.authenticated and env_manager.get_env_var("DEFAULT_CONN_TYPE"):
-        df, meta = load_env_connection()
-        if df is not None:
-            st.session_state.authenticated = True
-            st.session_state.pending_df = df
-            st.session_state.pending_source_meta = meta
+    # Auto-connect if environment variables are set
+    if not st.session_state.authenticated:
+        env_df, env_meta = load_env_connection()
+        if env_df is not None:
+            st.session_state.pending_df = env_df
+            st.session_state.pending_source_meta = env_meta
             st.session_state.is_env_connection = True
+            st.session_state.authenticated = True
+            
+    # Auto-navigation if connection established
+    if st.session_state.authenticated and st.session_state.active_domain is None:
+        if st.session_state.pending_df is not None:
+            # If domain pre-determined or in environment, proceed immediately
+            domain = getattr(st.session_state, "_pending_domain", None)
+            if not domain:
+                domain = env_manager.get_env_var("DEFAULT_DOMAIN")
+            
+            if domain and domain in DOMAINS.values():
+                if connect_source(domain, st.session_state.pending_df, source_meta=st.session_state.pending_source_meta):
+                    st.session_state.active_domain = domain
+                    st.session_state.pending_df = None
+                    st.rerun()
 
 init_state()
 
