@@ -921,12 +921,7 @@ if not st.session_state.active_domain:
             f"</div>",
             unsafe_allow_html=True
         )
-    elif st.session_state.get("conn_attempt_error"):
-        st.markdown(
-            "<div class='fallback-banner'>⚠️ Live connection failed — the Agent will use the "
-            "demo dataset for the selected domain.</div>",
-            unsafe_allow_html=True
-        )
+
     else:
         st.markdown(
             "<div class='demo-badge'>📂 Demo Mode — using built-in enterprise datasets</div>",
@@ -1555,14 +1550,7 @@ with right_col:
         table_asset in sel_assets
     )
 
-    # ─── Fallback warning banner (if demo mode forced after failed live conn) ──
-    if src_data.get("source_meta", {}).get("is_demo") and \
-       st.session_state.get("conn_attempt_error"):
-        st.markdown(
-            "<div class='fallback-banner'>⚠️ Live connection failed — showing results on "
-            "the demo dataset. Provide valid credentials to analyze real-time data.</div>",
-            unsafe_allow_html=True
-        )
+
 
     # ════════════════════════════════════════════════════════════════════════
     # CONTEXT BANNERS
