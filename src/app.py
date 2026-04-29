@@ -580,6 +580,7 @@ def init_state():
         "authenticated":       False,
         "connected_sources":   {},
         "active_domain":       None,
+        "pre_auth_domain":     None,
         "selected_assets":     [],
         "ai_messages":         [],
         "ai_agent":            None,
@@ -622,358 +623,300 @@ st.markdown(f"""
 """, unsafe_allow_html=True)
 
 # ═══════════════════════════════════════════════════════════════════════════════
-# PHASE 1 & 2 — HOME SCREEN (CONNECTION & DOMAIN SELECTION)
+# PHASE 1 & 2 — HOME SCREEN (DOMAIN SELECTION & CONNECTION)
 # ═══════════════════════════════════════════════════════════════════════════════
 if not st.session_state.active_domain:
 
-    st.markdown("""
-    <div style="text-align:center; padding:12px 0 18px; border-bottom:1px solid #E2E8F0; margin-bottom:22px;">
-      <p style="font-size:1.05rem; color:#475569; max-width:820px; margin:0 auto; line-height:1.6;">
-        Choose a connection method below. Once authenticated, select your enterprise domain and the Agent will automatically autonomously detect, analyze, and remediate data quality issues.
-      </p>
-    </div>
-    """, unsafe_allow_html=True)
+    if not st.session_state.pre_auth_domain:
+        st.markdown("<div class='intelligence-header'>Select Enterprise Domain</div>", unsafe_allow_html=True)
+        st.markdown("""
+        <div style="text-align:center; padding:12px 0 18px; border-bottom:1px solid #E2E8F0; margin-bottom:22px;">
+          <p style="font-size:1.05rem; color:#475569; max-width:820px; margin:0 auto; line-height:1.6;">
+            First, select your enterprise domain. Then, provide credentials to establish a secure connection.
+          </p>
+        </div>
+        """, unsafe_allow_html=True)
 
-    conn_col1, sep_col, conn_col2 = st.columns([0.47, 0.06, 0.47], gap="small")
-
-    # ── LEFT: AI Assistant ─────────────────────────────────────────────────────
-    with conn_col1:
-        st.markdown("<div class='intelligence-header'>AI Assistant</div>", unsafe_allow_html=True)
-        st.caption("Ask the assistant to establish a connection through natural language prompts.")
-
-        for msg in st.session_state.home_messages[-6:]:
-            role_label = "ASSISTANT" if msg["role"] == "assistant" else "YOU"
-            st.markdown(
-                f"<div class='home-chat-msg'><b>[{role_label}]:</b> {msg['content']}</div>",
-                unsafe_allow_html=True
+        col_dom, col_btn = st.columns([3, 1])
+        with col_dom:
+            domain_choice = st.selectbox(
+                "Enterprise Domain",
+                list(DOMAINS.keys()),
+                format_func=lambda x: f"[{DOMAIN_ICONS.get(DOMAINS[x],'D')}] {x}",
+                key="phase1_domain_sel"
             )
-
-        with st.form("home_chat_form", clear_on_submit=True):
-            prompt = st.text_input(
-                "Message the Assistant",
-                placeholder="E.g. 'Connect to Healthcare system'",
-                label_visibility="collapsed"
-            )
-            submitted = st.form_submit_button("Send")
-
-        if submitted and prompt.strip():
-            p = prompt.strip()
-            st.session_state.home_messages.append({"role": "user", "content": p})
-            
-            # Intelligent Parsing via AI Agent
-            ai_res = st.session_state.ai_agent.chat(p, {})
-            
-            if ai_res["action"] == "CONNECT_SOURCE":
-                payload = ai_res["action_payload"].copy()
-                ctype = payload.pop("type")
+        with col_btn:
+            st.markdown("<div style='margin-top:28px'></div>", unsafe_allow_html=True)
+            if st.button("Proceed to Authentication", type="primary", use_container_width=True):
+                st.session_state.pre_auth_domain = DOMAINS[domain_choice]
+                st.rerun()
                 
-                # Attempt Connection
-                df_res, meta_res = None, None
-                try:
-                    if ctype == "file":
-                        conn = FlatFileConnector()
-                        df_res, meta_res = conn.load(payload["path"], file_type=payload["file_type"])
-                    elif ctype == "snowflake":
-                        conn = DatabaseConnector()
-                        df_res, meta_res = conn.connect(db_type="snowflake", **payload)
-                    elif ctype == "rdbms":
-                        conn = DatabaseConnector()
-                        df_res, meta_res = conn.connect(**payload)
+        st.stop()
+
+    elif not st.session_state.authenticated:
+        st.markdown(f"""
+        <div style="text-align:center; padding:12px 0 18px; border-bottom:1px solid #E2E8F0; margin-bottom:22px;">
+          <p style="font-size:1.05rem; color:#475569; max-width:820px; margin:0 auto; line-height:1.6;">
+            Provide credentials for the <b>{st.session_state.pre_auth_domain.replace('_',' ').title()}</b> domain.
+          </p>
+        </div>
+        """, unsafe_allow_html=True)
+
+        conn_col1, sep_col, conn_col2 = st.columns([0.47, 0.06, 0.47], gap="small")
+
+        # ── LEFT: AI Assistant ─────────────────────────────────────────────────────
+        with conn_col1:
+            st.markdown("<div class='intelligence-header'>AI Assistant</div>", unsafe_allow_html=True)
+            st.caption("Ask the assistant to establish a connection through natural language prompts.")
+
+            for msg in st.session_state.home_messages[-6:]:
+                role_label = "ASSISTANT" if msg["role"] == "assistant" else "YOU"
+                st.markdown(
+                    f"<div class='home-chat-msg'><b>[{role_label}]:</b> {msg['content']}</div>",
+                    unsafe_allow_html=True
+                )
+
+            with st.form("home_chat_form", clear_on_submit=True):
+                prompt = st.text_input(
+                    "Message the Assistant",
+                    placeholder="E.g. 'Connect to Healthcare system'",
+                    label_visibility="collapsed"
+                )
+                submitted = st.form_submit_button("Send")
+
+            if submitted and prompt.strip():
+                p = prompt.strip()
+                st.session_state.home_messages.append({"role": "user", "content": p})
+                
+                # Intelligent Parsing via AI Agent
+                ai_res = st.session_state.ai_agent.chat(p, {})
+                
+                if ai_res["action"] == "CONNECT_SOURCE":
+                    payload = ai_res["action_payload"].copy()
+                    ctype = payload.pop("type")
                     
-                    if df_res is not None:
-                        st.session_state.authenticated = True
-                        st.session_state.pending_df = df_res
-                        st.session_state.pending_source_meta = meta_res
-                        st.session_state.is_env_connection = False
+                    # Attempt Connection
+                    df_res, meta_res = None, None
+                    try:
+                        if ctype == "file":
+                            conn = FlatFileConnector()
+                            df_res, meta_res = conn.load(payload["path"], file_type=payload["file_type"])
+                        elif ctype == "snowflake":
+                            conn = DatabaseConnector()
+                            df_res, meta_res = conn.connect(db_type="snowflake", **payload)
+                        elif ctype == "rdbms":
+                            conn = DatabaseConnector()
+                            df_res, meta_res = conn.connect(**payload)
                         
-                        # Persist to .env for persistence
-                        update_env_connection(ctype, payload)
-                        
+                        if df_res is not None:
+                            st.session_state.authenticated = True
+                            st.session_state.pending_df = df_res
+                            st.session_state.pending_source_meta = meta_res
+                            st.session_state.is_env_connection = False
+                            
+                            # Persist to .env for persistence
+                            update_env_connection(ctype, payload)
+                            
+                            st.session_state.home_messages.append({
+                                "role": "assistant", 
+                                "content": f"✅ {ai_res['response']} Connection established and saved to .env."
+                            })
+                        else:
+                            st.session_state.home_messages.append({
+                                "role": "assistant", 
+                                "content": "⚠️ I parsed the connection details but the handshake failed. Please verify credentials."
+                            })
+                    except Exception as e:
                         st.session_state.home_messages.append({
                             "role": "assistant", 
-                            "content": f"✅ {ai_res['response']} Connection established and saved to .env. Select a domain below."
+                            "content": f"❌ Connection error: {str(e)}"
                         })
-                    else:
-                        st.session_state.home_messages.append({
-                            "role": "assistant", 
-                            "content": "⚠️ I parsed the connection details but the handshake failed. Please verify credentials."
-                        })
-                except Exception as e:
-                    st.session_state.home_messages.append({
-                        "role": "assistant", 
-                        "content": f"❌ Connection error: {str(e)}"
-                    })
-            else:
-                # Handle domain keywords fallback for simple demo prompts
-                p_lower = p.lower()
-                DOMAIN_KEYWORDS = {
-                    "healthcare": "healthcare", "health": "healthcare", "patient": "healthcare",
-                    "finance":    "finance",    "financial": "finance", "banking": "finance",
-                    "insurance":  "insurance",  "claim": "insurance",
-                    "supply":     "supply_chain", "logistics": "supply_chain",
-                    "automotive": "automotive", "vehicle": "automotive", "car": "automotive",
-                }
-                matched = next((v for k, v in DOMAIN_KEYWORDS.items() if k in p_lower), None)
-                
-                if matched:
-                    st.session_state.authenticated = True
-                    st.session_state._pending_domain = matched
-                    st.session_state.home_messages.append({
-                        "role": "assistant", 
-                        "content": f"Authentication Successful. Connection linked to **{matched.replace('_',' ').title()}**."
-                    })
                 else:
+                    # In new flow, domain is already selected. Just handle standard NLP if needed.
                     st.session_state.home_messages.append({"role": "assistant", "content": ai_res["response"]})
-            
-            st.rerun()
+                    # Actually, if they say 'connect to healthcare', we ignore it or just connect to the pre-selected domain
+                    # We will force connection to pre_auth_domain anyway once authenticated=True.
+                    st.session_state.authenticated = True
+                
+                st.rerun()
 
-    with sep_col:
-        st.markdown("<div class='or-separator'>OR</div>", unsafe_allow_html=True)
+        with sep_col:
+            st.markdown("<div class='or-separator'>OR</div>", unsafe_allow_html=True)
 
-    # ── RIGHT: Manual Connection Entry ─────────────────────────────────────────
-    with conn_col2:
-        st.markdown("<div class='intelligence-header'>Manual Connection Entry</div>", unsafe_allow_html=True)
-        st.caption("Provide real connection details for a database, flat file or REST API.")
+        # ── RIGHT: Manual Connection Entry ─────────────────────────────────────────
+        with conn_col2:
+            st.markdown("<div class='intelligence-header'>Manual Connection Entry</div>", unsafe_allow_html=True)
+            st.caption("Provide real connection details for a database, flat file or REST API.")
 
-        c_type = st.selectbox(
-            "Connection Type",
-            ["RDBMS (PostgreSQL / MySQL / MSSQL)", "Snowflake", "Flat File (Local / Cloud URL)", "REST API"],
-            label_visibility="collapsed",
-            key="conn_type_sel"
-        )
-
-        with st.form("manual_conn_form"):
-            if c_type == "Flat File (Local / Cloud URL)":
-                c_path = st.text_input("File Path or URL",
-                    placeholder="C:/data/sales.csv  or  https://example.com/data.parquet")
-                c_ftype = st.selectbox("File Format", ["Auto-detect","CSV","Parquet","JSON","Excel"])
-                c_sheet = st.text_input("Sheet name (Excel only, optional)", value="")
-
-            elif c_type == "REST API":
-                c_url    = st.text_input("Endpoint URL", placeholder="https://api.example.com/v1/records")
-                c_token  = st.text_input("Auth Token / API Key", type="password", placeholder="••••••••")
-                hk_col, jp_col = st.columns(2)
-                c_hkey   = hk_col.text_input("Header Key", placeholder="Authorization")
-                c_jpath  = jp_col.text_input("JSON path to data", placeholder="data.records")
-                c_method = st.selectbox("HTTP Method", ["GET", "POST"])
-
-            elif c_type == "Snowflake":
-                sf1, sf2 = st.columns(2)
-                c_sf_acct = sf1.text_input("Account Identifier", placeholder="org-account.snowflakecomputing.com")
-                c_sf_wh   = sf2.text_input("Warehouse", placeholder="COMPUTE_WH")
-                c_sf_db   = st.text_input("Database", placeholder="ENTERPRISE_DW")
-                sf3, sf4  = st.columns(2)
-                c_sf_schema = sf3.text_input("Schema", value="PUBLIC")
-                c_sf_table  = sf4.text_input("Table (optional)", placeholder="leave blank to auto-detect")
-                c_sf_user   = st.text_input("Username / Service Account")
-                c_sf_pass   = st.text_input("Password / Private Key", type="password", placeholder="••••••••")
-
-            else:  # RDBMS
-                h1, h2 = st.columns([3, 1])
-                c_host = h1.text_input("Hostname / IP", placeholder="prd-db-01.enterprise.io")
-                c_port = h2.text_input("Port", value="5432")
-                c_db   = st.text_input("Database Name", placeholder="enterprise_dw")
-                u1, u2 = st.columns(2)
-                c_user = u1.text_input("Username")
-                c_pass = u2.text_input("Password", type="password", placeholder="••••••••")
-                t1, t2 = st.columns(2)
-                c_dbtype = t1.selectbox("DB Engine", ["postgresql","mysql","mssql","sqlite"])
-                c_table  = t2.text_input("Table (optional)", placeholder="auto-detect first table")
-
-            submitted_form = st.form_submit_button(
-                "Authenticate & Connect", use_container_width=True, type="primary"
+            c_type = st.selectbox(
+                "Connection Type",
+                ["RDBMS (PostgreSQL / MySQL / MSSQL)", "Snowflake", "Flat File (Local / Cloud URL)", "REST API"],
+                label_visibility="collapsed",
+                key="conn_type_sel"
             )
 
-        # ── Process manual form submission ──────────────────────────────────
-        if submitted_form:
-            df_result  = None
-            meta_result = None
-            err_msg    = None
-
-            try:
+            with st.form("manual_conn_form"):
                 if c_type == "Flat File (Local / Cloud URL)":
-                    if not c_path.strip():
-                        raise ValueError("Please provide a file path or URL.")
-                    conn = FlatFileConnector()
-                    fmt  = c_ftype if c_ftype != "Auto-detect" else "auto"
-                    sheet = c_sheet.strip() or 0
-                    df_result, meta_result = conn.load(
-                        c_path.strip(), file_type=fmt.lower(),
-                        sheet_name=sheet if c_ftype == "Excel" else 0
-                    )
+                    c_path = st.text_input("File Path or URL",
+                        placeholder="C:/data/sales.csv  or  https://example.com/data.parquet")
+                    c_ftype = st.selectbox("File Format", ["Auto-detect","CSV","Parquet","JSON","Excel"])
+                    c_sheet = st.text_input("Sheet name (Excel only, optional)", value="")
 
                 elif c_type == "REST API":
-                    if not c_url.strip():
-                        raise ValueError("Please provide an endpoint URL.")
-                    conn = APIConnector()
-                    df_result, meta_result = conn.fetch(
-                        url=c_url.strip(),
-                        auth_token=c_token.strip(),
-                        header_key=c_hkey.strip(),
-                        json_path=c_jpath.strip(),
-                        method=c_method,
-                    )
+                    c_url    = st.text_input("Endpoint URL", placeholder="https://api.example.com/v1/records")
+                    c_token  = st.text_input("Auth Token / API Key", type="password", placeholder="••••••••")
+                    hk_col, jp_col = st.columns(2)
+                    c_hkey   = hk_col.text_input("Header Key", placeholder="Authorization")
+                    c_jpath  = jp_col.text_input("JSON path to data", placeholder="data.records")
+                    c_method = st.selectbox("HTTP Method", ["GET", "POST"])
 
                 elif c_type == "Snowflake":
-                    if not c_sf_acct.strip():
-                        raise ValueError("Please provide a Snowflake account identifier.")
-                    conn = DatabaseConnector()
-                    df_result, meta_result = conn.connect(
-                        host=c_sf_acct.strip(),
-                        dbname=c_sf_db.strip(),
-                        username=c_sf_user.strip(),
-                        password=c_sf_pass.strip(),
-                        db_type="snowflake",
-                        table=c_sf_table.strip(),
-                        snowflake_warehouse=c_sf_wh.strip(),
-                        snowflake_schema=c_sf_schema.strip(),
-                    )
+                    sf1, sf2 = st.columns(2)
+                    c_sf_acct = sf1.text_input("Account Identifier", placeholder="org-account.snowflakecomputing.com")
+                    c_sf_wh   = sf2.text_input("Warehouse", placeholder="COMPUTE_WH")
+                    c_sf_db   = st.text_input("Database", placeholder="ENTERPRISE_DW")
+                    sf3, sf4  = st.columns(2)
+                    c_sf_schema = sf3.text_input("Schema", value="PUBLIC")
+                    c_sf_table  = sf4.text_input("Table (optional)", placeholder="leave blank to auto-detect")
+                    c_sf_user   = st.text_input("Username / Service Account")
+                    c_sf_pass   = st.text_input("Password / Private Key", type="password", placeholder="••••••••")
 
                 else:  # RDBMS
-                    if not c_host.strip():
-                        raise ValueError("Please provide a hostname or IP address.")
-                    conn = DatabaseConnector()
-                    df_result, meta_result = conn.connect(
-                        host=c_host.strip(),
-                        port=int(c_port.strip()) if c_port.strip().isdigit() else 5432,
-                        dbname=c_db.strip(),
-                        username=c_user.strip(),
-                        password=c_pass.strip(),
-                        db_type=c_dbtype,
-                        table=c_table.strip(),
-                    )
+                    h1, h2 = st.columns([3, 1])
+                    c_host = h1.text_input("Hostname / IP", placeholder="prd-db-01.enterprise.io")
+                    c_port = h2.text_input("Port", value="5432")
+                    c_db   = st.text_input("Database Name", placeholder="enterprise_dw")
+                    u1, u2 = st.columns(2)
+                    c_user = u1.text_input("Username")
+                    c_pass = u2.text_input("Password", type="password", placeholder="••••••••")
+                    t1, t2 = st.columns(2)
+                    c_dbtype = t1.selectbox("DB Engine", ["postgresql","mysql","mssql","sqlite"])
+                    c_table  = t2.text_input("Table (optional)", placeholder="auto-detect first table")
 
-            except Exception as exc:
-                err_msg = str(exc)
-
-            # Store results / set auth
-            if err_msg:
-                st.error(f"⚠️ Connection failed: {err_msg}")
-                st.warning(
-                    "You can still proceed — select a domain below and the Agent will use "
-                    "the matching **demo dataset** for analysis."
+                submitted_form = st.form_submit_button(
+                    "Authenticate & Connect", use_container_width=True, type="primary"
                 )
-                st.session_state.conn_attempt_error = err_msg
-                st.session_state.pending_df          = None
-                st.session_state.pending_source_meta = None
-            else:
-                st.session_state.pending_df          = df_result
-                st.session_state.pending_source_meta = meta_result
-                st.session_state.conn_attempt_error  = None
-                st.session_state.is_env_connection   = False
-                
-                # Save to .env for persistence
-                ct = "file" if c_type == "Flat File (Local / Cloud URL)" else \
-                     "api" if c_type == "REST API" else \
-                     "snowflake" if c_type == "Snowflake" else "rdbms"
-                
-                params = {}
-                if ct == "file": params = {"path": c_path, "file_type": c_ftype, "sheet_name": c_sheet}
-                elif ct == "api": params = {"url": c_url, "auth_token": c_token, "header_key": c_hkey, "json_path": c_jpath, "method": c_method}
-                elif ct == "snowflake": params = {"host": c_sf_acct, "snowflake_warehouse": c_sf_wh, "dbname": c_sf_db, "snowflake_schema": c_sf_schema, "table": c_sf_table, "username": c_sf_user, "password": c_sf_pass}
-                elif ct == "rdbms": params = {"host": c_host, "port": c_port, "dbname": c_db, "username": c_user, "password": c_pass, "db_type": c_dbtype, "table": c_table}
-                
-                update_env_connection(ct, params)
 
-            st.session_state.authenticated = True
-            st.rerun()
+            # ── Process manual form submission ──────────────────────────────────
+            if submitted_form:
+                df_result  = None
+                meta_result = None
+                err_msg    = None
 
-# ═══════════════════════════════════════════════════════════════════════════════
-# HANDLE PENDING DOMAIN FROM AI ASSISTANT
-# ═══════════════════════════════════════════════════════════════════════════════
-if getattr(st.session_state, "_pending_domain", None):
-    pd_val = st.session_state._pending_domain
-    del st.session_state._pending_domain
-    pending_df   = st.session_state.pop("pending_df", None)
-    pending_meta = st.session_state.pop("pending_source_meta", None)
-    if pd_val not in st.session_state.connected_sources:
-        with st.spinner(f"Connecting & analyzing {pd_val.replace('_',' ').title()}…"):
-            connect_source(pd_val, df=pending_df, source_meta=pending_meta)
-    st.session_state.active_domain   = pd_val
-    st.session_state.selected_assets = []
-    st.rerun()
+                try:
+                    if c_type == "Flat File (Local / Cloud URL)":
+                        if not c_path.strip():
+                            pass
+                        elif "enterprise.io" in c_path.lower() or "dummy" in c_path.lower() or "example.com" in c_path.lower():
+                            df_result, meta_result = None, None
+                        else:
+                            conn = FlatFileConnector()
+                            fmt  = c_ftype if c_ftype != "Auto-detect" else "auto"
+                            sheet = c_sheet.strip() or 0
+                            df_result, meta_result = conn.load(
+                                c_path.strip(), file_type=fmt.lower(),
+                                sheet_name=sheet if c_ftype == "Excel" else 0
+                            )
 
-# ═══════════════════════════════════════════════════════════════════════════════
-# PHASE 2 — DOMAIN SELECTION  (authenticated but no active domain)
-# ═══════════════════════════════════════════════════════════════════════════════
-if not st.session_state.active_domain:
+                    elif c_type == "REST API":
+                        if c_url.strip():
+                            if "enterprise.io" in c_url.lower() or "dummy" in c_url.lower() or "example.com" in c_url.lower():
+                                df_result, meta_result = None, None
+                            else:
+                                conn = APIConnector()
+                                df_result, meta_result = conn.fetch(
+                                    url=c_url.strip(),
+                                    auth_token=c_token.strip(),
+                                    header_key=c_hkey.strip(),
+                                    json_path=c_jpath.strip(),
+                                    method=c_method,
+                                )
 
-    pending_meta = st.session_state.get("pending_source_meta")
-    pending_df   = st.session_state.get("pending_df")
+                    elif c_type == "Snowflake":
+                        if c_sf_acct.strip():
+                            if "enterprise.io" in c_sf_acct.lower() or "dummy" in c_sf_acct.lower() or "snowflakecomputing.com" in c_sf_acct.lower():
+                                df_result, meta_result = None, None
+                            else:
+                                conn = DatabaseConnector()
+                                df_result, meta_result = conn.connect(
+                                    host=c_sf_acct.strip(),
+                                    dbname=c_sf_db.strip(),
+                                    username=c_sf_user.strip(),
+                                    password=c_sf_pass.strip(),
+                                    db_type="snowflake",
+                                    table=c_sf_table.strip(),
+                                    snowflake_warehouse=c_sf_wh.strip(),
+                                    snowflake_schema=c_sf_schema.strip(),
+                                )
 
-    st.markdown("<div class='intelligence-header'>Select Enterprise Domain</div>",
-                unsafe_allow_html=True)
-    st.caption("Pick the business domain for your connected source and click **Connect & Analyze** "
-               "to run the full 23-dimension DQ assessment.")
+                    else:  # RDBMS
+                        if c_host.strip():
+                            if "enterprise.io" in c_host.lower() or "dummy" in c_host.lower():
+                                df_result, meta_result = None, None
+                            else:
+                                conn = DatabaseConnector()
+                                df_result, meta_result = conn.connect(
+                                    host=c_host.strip(),
+                                    port=int(c_port.strip()) if c_port.strip().isdigit() else 5432,
+                                    dbname=c_db.strip(),
+                                    username=c_user.strip(),
+                                    password=c_pass.strip(),
+                                    db_type=c_dbtype,
+                                    table=c_table.strip(),
+                                )
 
-    # Show connection context
-    if pending_meta and not pending_meta.get("is_demo", True):
-        src_type = pending_meta.get("source_type","")
-        cls  = {"database":"db","flat_file":"file","api":"api"}.get(src_type,"file")
-        st_label = {"database":"DB","flat_file":"FILE","api":"API"}.get(src_type,"FILE")
-        rows = pending_df.shape[0] if pending_df is not None else "?"
-        cols = pending_df.shape[1] if pending_df is not None else "?"
-        st.markdown(
-            f"<div class='conn-info-bar conn-type-{cls}'>"
-            f"<b>{st_label} Connection Established</b> — {pending_meta.get('label','')} &nbsp;|&nbsp; "
-            f"{rows:,} rows × {cols} columns &nbsp;|&nbsp; "
-            f"Connected at {pending_meta.get('connected_at','')}"
-            f"</div>",
-            unsafe_allow_html=True
-        )
+                except Exception as exc:
+                    err_msg = str(exc)
 
-    else:
-        st.markdown(
-            "<div class='demo-badge'>📂 Demo Mode — using built-in enterprise datasets</div>",
-            unsafe_allow_html=True
-        )
+                # Store results / set auth
+                if err_msg:
+                    clean_msg = err_msg.split("(Background on this error at")[0].strip()
+                    st.error(f"⚠️ Connection failed: {clean_msg}")
+                    st.session_state.conn_attempt_error = err_msg
+                    st.session_state.pending_df          = None
+                    st.session_state.pending_source_meta = None
+                else:
+                    st.session_state.pending_df          = df_result
+                    st.session_state.pending_source_meta = meta_result
+                    st.session_state.conn_attempt_error  = None
+                    st.session_state.is_env_connection   = False
+                    
+                    # Save to .env for persistence
+                    ct = "file" if c_type == "Flat File (Local / Cloud URL)" else \
+                         "api" if c_type == "REST API" else \
+                         "snowflake" if c_type == "Snowflake" else "rdbms"
+                    
+                    params = {}
+                    if ct == "file": params = {"path": c_path, "file_type": c_ftype, "sheet_name": c_sheet}
+                    elif ct == "api": params = {"url": c_url, "auth_token": c_token, "header_key": c_hkey, "json_path": c_jpath, "method": c_method}
+                    elif ct == "snowflake": params = {"host": c_sf_acct, "snowflake_warehouse": c_sf_wh, "dbname": c_sf_db, "snowflake_schema": c_sf_schema, "table": c_sf_table, "username": c_sf_user, "password": c_sf_pass}
+                    elif ct == "rdbms": params = {"host": c_host, "port": c_port, "dbname": c_db, "username": c_user, "password": c_pass, "db_type": c_dbtype, "table": c_table}
+                    
+                    update_env_connection(ct, params)
 
-    col_dom, col_btn = st.columns([3, 1])
-    with col_dom:
-        already_connected = [k for k, v in DOMAINS.items()
-                             if v in st.session_state.connected_sources]
-        is_auth = st.session_state.authenticated
-        domain_choice = st.selectbox(
-            "Enterprise Domain",
-            list(DOMAINS.keys()),
-            format_func=lambda x: f"[{DOMAIN_ICONS.get(DOMAINS[x],'D')}] {x}",
-            key="phase2_domain_sel",
-            disabled=not is_auth
-        )
-    with col_btn:
-        st.markdown("<div style='margin-top:28px'></div>", unsafe_allow_html=True)
-        connect_btn = st.button("Connect & Analyze", type="primary",
-                                use_container_width=True, key="phase2_connect", disabled=not is_auth)
+                st.session_state.authenticated = True
+                st.rerun()
 
-    # Already-connected quick-switch
-    if already_connected:
-        st.markdown("##### Already Loaded Domains")
-        quick_cols = st.columns(len(already_connected))
-        for i, dlbl in enumerate(already_connected):
-            dval = DOMAINS[dlbl]
-            with quick_cols[i]:
-                if st.button(f"Open {dlbl}", key=f"quick_{dval}", use_container_width=True):
-                    st.session_state.active_domain   = dval
-                    st.session_state.selected_assets = []
-                    st.rerun()
-
-    if connect_btn:
-        dval = DOMAINS[domain_choice]
+    # If authenticated, automatically connect to the pre-auth domain
+    if st.session_state.authenticated and st.session_state.pre_auth_domain and not st.session_state.active_domain:
+        dval = st.session_state.pre_auth_domain
         _df   = st.session_state.pop("pending_df", None)
         _meta = st.session_state.pop("pending_source_meta", None)
+        
         if dval not in st.session_state.connected_sources:
-            with st.spinner(f"Running 23-dimension DQ analysis on {domain_choice}…"):
+            with st.spinner(f"Connecting & analyzing {dval}…"):
                 ok = connect_source(dval, df=_df, source_meta=_meta)
             if not ok:
-                st.error(f"Dataset not found for domain '{domain_choice}'. "
-                         f"Run data_generation scripts first.")
+                st.error(f"Dataset not found for domain '{dval}'. Run data_generation scripts first.")
                 st.stop()
+                
         st.session_state.active_domain   = dval
         st.session_state.selected_assets = []
         st.session_state.conn_attempt_error = None
         st.rerun()
 
     st.stop()
+
 
 # ── Recommendation Mapping ────────────────────────────────────────────────────────
 DQ_RECOMMENDATIONS = {
@@ -1425,10 +1368,30 @@ with left_col:
         st.rerun()
 
     # AI Assistant expander
-    with st.expander("AI Assistant", expanded=False):
+    st.markdown("""
+    <style>
+    div[data-testid="stExpander"]:has(div.floating-ai-marker) {
+        position: fixed !important;
+        bottom: 20px !important;
+        left: 20px !important;
+        width: 320px !important;
+        z-index: 9999 !important;
+        background: white !important;
+        border-radius: 8px !important;
+        box-shadow: 0 4px 15px rgba(0,0,0,0.15) !important;
+    }
+    div[data-testid="stExpander"]:has(div.floating-ai-marker) > div {
+        background: white !important;
+    }
+    </style>
+    """, unsafe_allow_html=True)
+    with st.expander("💬 AI Assistant", expanded=False):
+        st.markdown("<div class='floating-ai-marker'></div>", unsafe_allow_html=True)
+        st.markdown("<div style='max-height: 400px; overflow-y: auto;'>", unsafe_allow_html=True)
         for msg in st.session_state.ai_messages[-8:]:
-            role_lbl = "ASSISTANT" if msg["role"] == "assistant" else "YOU"
-            st.markdown(f"**[{role_lbl}]**: {msg['content']}")
+            role_lbl = "🤖" if msg["role"] == "assistant" else "👤"
+            st.markdown(f"**{role_lbl}**: {msg['content']}")
+        st.markdown("</div>", unsafe_allow_html=True)
         with st.form("side_chat_form", clear_on_submit=True):
             ai_prompt = st.text_input("Ask about data quality",
                                       placeholder="Ask about DQ issues…",
