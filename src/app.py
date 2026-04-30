@@ -1970,7 +1970,7 @@ with right_col:
                     minor_rows.append({
                         "Issue Type": DIMENSION_LABELS.get(dim, dim.title()),
                         "Affected Field": iss.column or "Table level",
-                        "Severity": getattr(iss, "risk_level", "LOW"),
+                        "Category": "Minor",
                         "Suggested Fix": getattr(iss, "fix_action", "Auto-remediate"),
                         "Diagnosis Pattern": "High Success Rate" if np.random.rand() > 0.3 else "New Pattern"
                     })
@@ -2035,6 +2035,7 @@ with right_col:
                         "Dimension": DIMENSION_LABELS.get(dim, dim.title()),
                         "Field": iss.column or "Table level",
                         "Issue": iss.description,
+                        "Category": "Major",
                         "Prior Alignments": f"Prior approvals opted for '{DQ_RECOMMENDATIONS.get(dim, 'Check source')}'"
                     })
                 
