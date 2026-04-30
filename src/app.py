@@ -1032,6 +1032,7 @@ def render_dashboard_view(pre_output, post_output=None, key_suffix=""):
             with g2: st.plotly_chart(create_gauge(post_score, "Post-Fix", delta_ref=pre_score), use_container_width=True)
         else:
             st.plotly_chart(create_gauge(pre_score, "Overall DQ Health"), use_container_width=True)
+            st.info("The overall DQ health is based on pre-established connections to sources associated with the selected domain.")
 
     with c_metrics:
         st.markdown("<br/><br/>", unsafe_allow_html=True)
@@ -1412,14 +1413,6 @@ with left_col:
                 st.success("✅ Bulk revocation requested for over-privileged users (1h approval).")
                 send_alert_email("Bulk Revocation Authorization", "Action required: approve revocation of sensitive access for at-risk user roles.")
                 st.session_state.ai_messages.append({"role":"assistant","content": "I have requested revocation for sensitive users. An approval email has been sent."})
-                demo_triggered = True
-            elif "apply fixes" in lower_prompt or "remediate" in lower_prompt:
-                st.session_state["ai_trigger_auto_fix"] = True
-                st.session_state.ai_messages.append({"role":"assistant","content": "Understood. I am initiating the autonomous remediation for all identified minor issues across the selected assets."})
-                demo_triggered = True
-            elif "notify governance team" in lower_prompt or "send for approval" in lower_prompt:
-                st.session_state["ai_trigger_approval"] = True
-                st.session_state.ai_messages.append({"role":"assistant","content": "I have compiled the Major Issue manifest and dispatched it to the Governance and Executive teams for formal approval."})
                 demo_triggered = True
             elif "export security report" in lower_prompt:
                 st.success("✅ Security report exported and sent to Governance.")
@@ -1845,9 +1838,7 @@ with right_col:
                         for iss in res.issues:
                             # Table level: no column, and mentions the source
                             if not iss.column and (src in str(iss.description) or not sel_assets):
-                                risk = getattr(iss, "risk_level", "LOW").upper()
-                                cat_lbl = "Minor" if risk == "LOW" else "Major"
-                                tbl_issues.append({"Issue Type": res.display_name, "Issue": iss.description, "Category": cat_lbl})
+                                tbl_issues.append({"Issue Type": res.display_name, "Issue": iss.description, "Severity": getattr(iss,"risk_level","LOW").upper()})
                             # Field level: column belongs to this source
                             if iss.column in src_cols:
                                 col_with_issues.add(iss.column)
@@ -1894,17 +1885,16 @@ with right_col:
                             if not res: continue
                             for iss in res.issues:
                                 if iss.column == d_col:
-                                    risk = getattr(iss,"risk_level","LOW").upper()
                                     field_issues.append({
                                         "Issue Type": res.display_name,
                                         "Issue":     iss.description,
-                                        "Category":  "Minor" if risk == "LOW" else "Major",
+                                        "Severity":  getattr(iss,"risk_level","LOW").upper(),
                                         "Affected":  f"{iss.affected_rows:,} rows",
                                         "Recommendation": DQ_RECOMMENDATIONS.get(dim_id, "Apply standard constraints.")
                                     })
                         if field_issues:
                             st.markdown(f"**🛑 Current Issues for: `{d_col}`**")
-                            st.dataframe(pd.DataFrame(field_issues)[["Issue Type", "Issue", "Category", "Affected"]], use_container_width=True, hide_index=True)
+                            st.dataframe(pd.DataFrame(field_issues)[["Issue Type", "Issue", "Severity", "Affected"]], use_container_width=True, hide_index=True)
                             
                             st.markdown("##### 🌎 Issues, History & Diagnostic Recommendations")
                             st.caption(f"Context-aware recommendations directly tied to anomaly patterns for `{d_col}`.")
@@ -1970,7 +1960,7 @@ with right_col:
                     minor_rows.append({
                         "Issue Type": DIMENSION_LABELS.get(dim, dim.title()),
                         "Affected Field": iss.column or "Table level",
-                        "Category": "Minor",
+                        "Severity": getattr(iss, "risk_level", "LOW"),
                         "Suggested Fix": getattr(iss, "fix_action", "Auto-remediate"),
                         "Diagnosis Pattern": "High Success Rate" if np.random.rand() > 0.3 else "New Pattern"
                     })
@@ -2035,7 +2025,6 @@ with right_col:
                         "Dimension": DIMENSION_LABELS.get(dim, dim.title()),
                         "Field": iss.column or "Table level",
                         "Issue": iss.description,
-                        "Category": "Major",
                         "Prior Alignments": f"Prior approvals opted for '{DQ_RECOMMENDATIONS.get(dim, 'Check source')}'"
                     })
                 
@@ -2058,10 +2047,7 @@ with right_col:
                         else:
                             st.error(f"Failed to send approval email: {r['message']}")
 
-        # --- DOWNLOAD CENTER ---
-        st.markdown("#### 📥 Download Center")
-        st.caption("Export data and issue logs for offline analysis at any stage.")
-        
+        # --- DOWNLOAD SECTION ---
         excel_out = io.BytesIO()
         with pd.ExcelWriter(excel_out, engine="openpyxl") as w:
             src_data["df"].to_excel(w, sheet_name="Raw Data", index=False)
@@ -2070,28 +2056,16 @@ with right_col:
             if src_data.get("applied_fixes"):
                 pd.DataFrame(src_data["applied_fixes"]).to_excel(w, sheet_name="Fix Log", index=False)
             else:
-                # Add a sheet with all current issues (Pre-Fix)
-                all_issues = []
-                for dim, res in results.items():
-                    if res:
-                        for iss in res.issues:
-                            all_issues.append({
-                                "Dimension": DIMENSION_LABELS.get(dim, dim),
-                                "Field": iss.column or "Table level",
-                                "Description": iss.description,
-                                "Severity": getattr(iss, "risk_level", "LOW").upper()
-                            })
-                if all_issues:
-                    pd.DataFrame(all_issues).to_excel(w, sheet_name="Detected Issues", index=False)
+                pd.DataFrame(columns=["applied_at", "column_name", "fix_action", "rows_affected", "status"]).to_excel(w, sheet_name="Fix Log", index=False)
         
-        btn_lbl = "📥 Download Remediated Data + Fix Log" if src_data["applied_fixes"] else "📥 Download Current Data + Issue Log"
+        st.markdown("<br/>", unsafe_allow_html=True)
         st.download_button(
-            btn_lbl,
+            "📥 Download Issue Log",
             excel_out.getvalue(),
-            file_name=f"{active_domain}_{'remediated' if src_data['applied_fixes'] else 'raw'}_{datetime.now().strftime('%Y%m%d_%H%M')}.xlsx",
+            file_name=f"{active_domain}_issue_log_{datetime.now().strftime('%Y%m%d_%H%M')}.xlsx",
             mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
             use_container_width=True,
-            key="btn_global_download"
+            key="btn_download_issue_log"
         )
         # Removed empty closing wrapper
     # ──────────────────────────────────────────────────────────────────────
